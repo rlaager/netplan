@@ -297,7 +297,18 @@ class IntegrationTestsBase(unittest.TestCase):
         '''Generate config, launch and settle NM and networkd'''
 
         # regenerate netplan config
-        out = subprocess.check_output(['netplan', 'apply'], stderr=subprocess.STDOUT, universal_newlines=True)
+        out = ''
+        try:
+            out = subprocess.check_output(['netplan', 'apply'], stderr=subprocess.STDOUT, universal_newlines=True)
+        except subprocess.CalledProcessError as e:
+            # networkctl reload might return '1', due to an assert/crash in systemd-networkd:
+            # https://github.com/systemd/systemd/issues/18108 (fixed in systemd v249)
+            # Give it a 2nd try if it fails
+            print(e.output)
+            if e.returncode == 1:
+                time.sleep(1)
+                out = subprocess.check_output(['netplan', 'apply'], stderr=subprocess.STDOUT, universal_newlines=True)
+
         if 'Run \'systemctl daemon-reload\' to reload units.' in out:
             self.fail('systemd units changed without reload')
         # start NM so that we can verify that it does not manage anything
