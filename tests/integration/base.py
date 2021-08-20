@@ -73,16 +73,19 @@ class IntegrationTestsBase(unittest.TestCase):
             f.write('ENV{ID_NET_DRIVER}=="veth", ENV{INTERFACE}=="eth42|eth43", ENV{NM_UNMANAGED}="0"\n')
         subprocess.check_call(['udevadm', 'control', '--reload'])
 
+        # force-reset NM's unmanaged-devices list (using "=" instead of "+=")
+        # from /usr/lib/NetworkManager/conf.d/10-globally-managed-devices.conf,
+        # to stop it from trampling over our fake APs. https://pad.lv/1615044
         os.makedirs('/etc/NetworkManager/conf.d', exist_ok=True)
-        with open('/etc/NetworkManager/conf.d/99-test-ignore.conf', 'w') as f:
-            f.write('[keyfile]\nunmanaged-devices+=interface-name:eth0,interface-name:en*,interface-name:veth42,interface-name:veth43')
+        with open('/etc/NetworkManager/conf.d/90-test-ignore.conf', 'w') as f:
+            f.write('[keyfile]\nunmanaged-devices=interface-name:en*,eth0,nptestsrv')
         subprocess.check_call(['netplan', 'apply'])
         subprocess.call(['/lib/systemd/systemd-networkd-wait-online', '--quiet', '--timeout=30'])
 
     @classmethod
     def tearDownClass(klass):
         try:
-            os.remove('/run/NetworkManager/conf.d/test-blacklist.conf')
+            os.remove('/etc/NetworkManager/conf.d/99-test-denylist.conf')
         except FileNotFoundError:
             pass
         try:
@@ -144,11 +147,9 @@ class IntegrationTestsBase(unittest.TestCase):
                                       universal_newlines=True)
         klass.dev_e2_client_mac = out.split()[2]
 
-        os.makedirs('/run/NetworkManager/conf.d', exist_ok=True)
-
-        # work around https://launchpad.net/bugs/1615044
-        with open('/run/NetworkManager/conf.d/11-globally-managed-devices.conf', 'w') as f:
-            f.write('[keyfile]\nunmanaged-devices=')
+        # don't let NM trample over our fake AP
+        with open('/etc/NetworkManager/conf.d/99-test-denylist.conf', 'w') as f:
+            f.write('[main]\nplugins=keyfile\n[keyfile]\nunmanaged-devices+=%s,%s\n' % (klass.dev_e_ap, klass.dev_e2_ap))
 
     @classmethod
     def shutdown_devices(klass):
@@ -444,8 +445,8 @@ class IntegrationTestsWifi(IntegrationTestsBase):
         klass.dev_w_client = devs[1]
 
         # don't let NM trample over our fake AP
-        with open('/run/NetworkManager/conf.d/test-blacklist.conf', 'w') as f:
-            f.write('[main]\nplugins=keyfile\n[keyfile]\nunmanaged-devices+=nptestsrv,%s\n' % klass.dev_w_ap)
+        with open('/etc/NetworkManager/conf.d/99-test-denylist.conf', 'w') as f:
+            f.write('[main]\nplugins=keyfile\n[keyfile]\nunmanaged-devices+=%s\n' % klass.dev_w_ap)
 
     @classmethod
     def shutdown_devices(klass):
