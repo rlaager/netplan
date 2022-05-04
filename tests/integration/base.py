@@ -67,12 +67,7 @@ class IntegrationTestsBase(unittest.TestCase):
         with open('/etc/systemd/network/20-wired.network', 'w') as f:
             f.write('[Match]\nName=eth0 en*\n\n[Network]\nDHCP=yes\nKeepConfiguration=yes')
 
-        # ensure NM can manage our fake eths
-        os.makedirs('/run/udev/rules.d', exist_ok=True)
-        with open('/run/udev/rules.d/99-nm-veth-test.rules', 'w') as f:
-            f.write('ENV{ID_NET_DRIVER}=="veth", ENV{INTERFACE}=="eth42|eth43|iface1|iface2", ENV{NM_UNMANAGED}="0"\n')
-        subprocess.check_call(['udevadm', 'control', '--reload'])
-
+        # ensure NM doesn't interfere with our test backend (fake eth endpoints & mgmt network)
         os.makedirs('/etc/NetworkManager/conf.d', exist_ok=True)
         with open('/etc/NetworkManager/conf.d/99-test-ignore.conf', 'w') as f:
             f.write('''[keyfile]
@@ -84,10 +79,6 @@ unmanaged-devices+=interface-name:eth0,interface-name:en*,interface-name:veth42,
     def tearDownClass(klass):
         try:
             os.remove('/run/NetworkManager/conf.d/test-blacklist.conf')
-        except FileNotFoundError:
-            pass
-        try:
-            os.remove('/run/udev/rules.d/99-nm-veth-test.rules')
         except FileNotFoundError:
             pass
 
